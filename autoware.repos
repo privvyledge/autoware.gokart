@@ -62,11 +62,11 @@ repositories:
     type: git
     url: https://github.com/MapIV/llh_converter.git
     version: ros2
-  # launcher
+  # launcher. todo: switch to main later
   launcher/autoware_launch:
     type: git
     url: https://github.com/privvyledge/autoware_launch.gokart.git
-    version: main
+    version: slamming
   # sensor_component
   sensor_component/external/sensor_component_description:
     type: git
