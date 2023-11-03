@@ -74,7 +74,7 @@ repositories:
     type: git
     url: https://github.com/tier4/glog.git
     version: v0.6.0_t4-ros
-  # launcher
+  # launcher. todo: switch to main later
   launcher/autoware_launch:
     type: git
     url: https://github.com/privvyledge/autoware_launch.gokart.git
@@ -118,4 +118,9 @@ repositories:
   param/autoware_individual_params:
     type: git
     url: https://github.com/autowarefoundation/autoware_individual_params.git
+    version: main
+  # middleware
+  middleware/external/heaphook:
+    type: git
+    url: https://github.com/tier4/heaphook.git
     version: main
