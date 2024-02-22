@@ -1,0 +1,362 @@
+# Steps: Setup Jetpack[done], setup docker[done], setup nvidia-docker[done], clone Autoware,setup SDKs (Livox, Zed, VESC), Setup ROS2 Nav (nav2)
+# See (https://github.com/stereolabs/zed-docker/issues/41) for tips on setting up as non-root user
+# todo: setup particle filter
+# todo: setup dualshock4 package
+######################### Setup Docker container (Autoware or jetson-containers) with ROS
+FROM ghcr.io/autowarefoundation/autoware-universe:humble-latest-cuda-arm64
+
+ARG L4T_MAJOR_VERSION="35"
+ARG L4T_MINOR_VERSION="4"
+ARG L4T_PATCH_VERSION="1"
+ARG L4T_VERSION="${L4T_MAJOR_VERSION}.${L4T_MINOR_VERSION}.${L4T_PATCH_VERSION}"
+
+ARG ZED_SDK_MAJOR="4"
+ARG ZED_SDK_MINOR="0"
+
+# Setup user
+ARG USER=autoware
+ARG USERNAME=${USER}
+ENV USERNAME ${USERNAME}
+
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+ENV NVIDIA_DRIVER_CAPABILITIES all
+ENV NVIDIA_VISIBLE_DEVICES all
+
+RUN groupadd --gid $USER_GID $USERNAME && \
+        useradd --uid $USER_UID --gid $USER_GID -m $USERNAME && \
+        echo "$USERNAME:$USERNAME" | chpasswd && \
+        usermod --shell /bin/bash $USERNAME && \
+        usermod -aG sudo,video $USERNAME && \
+        usermod  --uid $USER_UID $USERNAME && \
+        echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
+        chmod 0440 /etc/sudoers.d/$USERNAME
+
+# Setup env and shell
+ENV LOGNAME root
+ENV DEBIAN_FRONTEND noninteractive
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV TZ=America/New_York
+
+# Install tools
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    cmake \
+    curl \
+    build-essential \
+    git \
+    pkg-config \
+    lsb-release \
+    wget \
+    less \
+    zstd \
+    udev \
+    sudo \
+    apt-transport-https \
+    openssh-server libv4l-0 libv4l-dev v4l-utils binutils xz-utils bzip2 lbzip2 \
+    ca-certificates libegl1 \
+    python3 \
+    python3-setuptools \
+    python3-pip \
+    python3-dev \
+    python3-rosdep \
+    libgstreamer1.0-0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    gstreamer1.0-x \
+    gstreamer1.0-alsa \
+    gstreamer1.0-gl \
+    gstreamer1.0-gtk3 \
+    gstreamer1.0-qt5 \
+    gstreamer1.0-pulseaudio \
+    libglib2.0-dev \
+    libgstrtspserver-1.0-dev \
+    gstreamer1.0-rtsp && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+# Set up "user" and environment variables
+#USER ${USERNAME}
+
+# Initialize directories
+#ENV BUILD_HOME=$HOME/kart_ws
+ENV BUILD_HOME=/kart_ws
+ARG BUILD_HOME=$BUILD_HOME
+RUN mkdir -p "$BUILD_HOME/src"
+
+#WORKDIR $HOME/sdks
+WORKDIR /sdks
+
+#------------------------
+# Setup TF2 and Geometry2
+#------------------------
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-tf2-tools \
+    ros-${ROS_DISTRO}-tf-transformations \
+    ros-${ROS_DISTRO}-rqt-tf-tree \
+    ros-${ROS_DISTRO}-tf2-geometry-msgs && \
+    python3 -m pip install transforms3d numpy && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+#-------------------------------
+# (todo) Setup Dualshock 4 Controller
+#-------------------------------
+
+#-----------------------------
+# Setup Zed Camera SDK (https://github.com/dusty-nv/jetson-containers/blob/master/packages/zed/Dockerfile | https://github.com/stereolabs/zed-docker/blob/master/4.X/l4t/py-devel/Dockerfile | https://www.stereolabs.com/docs/installation/jetson/ | https://www.stereolabs.com/docs/ros2/ )
+#-----------------------------
+RUN echo "# R${L4T_MAJOR_VERSION} (release), REVISION: ${L4T_MINOR_VERSION}.${L4T_PATCH_VERSION}" > /etc/nv_tegra_release ; \
+    wget -q --no-check-certificate -O ZED_SDK_Linux.run https://download.stereolabs.com/zedsdk/${ZED_SDK_MAJOR}.${ZED_SDK_MINOR}/l4t${L4T_MAJOR_VERSION}.${L4T_MINOR_VERSION}/jetsons && \
+    chmod +x ZED_SDK_Linux.run ; ./ZED_SDK_Linux.run silent skip_python && \
+#    rm -rf /usr/local/zed/resources/* \
+    rm -rf ZED_SDK_Linux.run && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
+## ZED Python API (use only if "skip_python" is passed to ./ZED_SDK_Linux.run)
+#RUN wget download.stereolabs.com/zedsdk/pyzed -O /usr/local/zed/get_python_api.py && \
+#    python3 /usr/local/zed/get_python_api.py && \
+#    python3 -m pip install cython wheel && \
+#    python3 -m pip install numpy pyopengl *.whl && \
+#    rm *.whl ; rm -rf /var/lib/apt/lists/* && apt-get clean
+
+WORKDIR $BUILD_HOME
+ARG ROS_VERSION="ROS2"
+ARG ROS_DISTRO="humble"
+ENV ROS_DISTRO=${ROS_DISTRO}
+ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+#------------------------
+# Setup ZED ROS2 Wrapper
+#------------------------
+RUN cd src && git clone --recursive https://github.com/stereolabs/zed-ros2-wrapper.git
+
+#------------------------
+# Setup Livox LIDAR SDK(https://github.com/Livox-SDK/Livox-SDK2 | https://github.com/Livox-SDK/Livox-SDK#43-connect-to-the-specific-lidar-units)
+# https://github.com/privvyledge/livox_ros_driver2
+#------------------------
+RUN cd /sdks/ && git clone https://github.com/Livox-SDK/Livox-SDK2.git && \
+    cd Livox-SDK2/ && mkdir build && cd build && cmake .. && make -j$(nproc) && sudo make install && \
+    cd $BUILD_HOME && git clone https://github.com/privvyledge/livox_ros_driver2 src/livox_ros_driver2 && \
+    cd src/livox_ros_driver2 && cp -f package_ROS2.xml package.xml && cp -rf launch_ROS2/ launch/
+
+#------------------------
+# Setup VESC and other related tools. Note for the VESC package use ros2 branch or ros2_imu_fix
+#------------------------
+RUN cd "src" && git clone https://github.com/privvyledge/f1tenth_system.git && \
+    cd f1tenth_system && git submodule update --init --force --remote && \
+    cd vesc && git checkout ros2_imu_fix
+
+#----------------------------
+# (Optional) Setup ROS Nav
+#----------------------------
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-navigation2 \
+    ros-${ROS_DISTRO}-nav2-bringup && \
+    sudo rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-gazebo-ros-pkgs && \
+#    cd "$BUILD_HOME/src" && git clone https://github.com/ros-planning/navigation2.git -b ${ROS_DISTRO}-devel && \
+#    rm -rf /var/lib/apt/lists/*
+
+#----------------------------------------
+# (Optional) Setup SLAM toolbox. Use galactic and above (or noetic) to get pose
+#----------------------------------------
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-slam-toolbox && \
+    sudo rm -rf /var/lib/apt/lists/*
+#RUN cd "$BUILD_HOME/src" && git clone https://github.com/SteveMacenski/slam_toolbox.git -b ${ROS_DISTRO}-devel && \
+#    cd slam_toolbox && rosdep install -q -y -r --from-paths src --ignore-src
+
+#---------------------------------------
+# (Optional) Setup Robot localization
+#---------------------------------------
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-robot-localization && \
+    sudo rm -rf /var/lib/apt/lists/*
+#RUN cd "$BUILD_HOME/src" && git clone https://github.com/cra-ros-pkg/robot_localization.git -b ${ROS_DISTRO}-devel && \
+#    cd robot_localization && rosdep install -q -y -r --from-paths src --ignore-src
+
+#-----------------------------------------
+#(Optional) Setup IMU Filters
+#-----------------------------------------
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-imu-tools && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+#-------------------------------------------------
+# Setup Laser filters/pipeline.
+#-------------------------------------------------
+#RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends && \
+#    ros-${ROS_DISTRO}-laser-pipeline ros-${ROS_DISTRO}-laser-filters  && \
+#    sudo rm -rf /var/lib/apt/lists/*
+RUN cd "$BUILD_HOME/src" && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends ros-${ROS_DISTRO}-filters && \
+    git clone https://github.com/ros-perception/laser_filters.git -b ros2
+
+#-------------------------------------------------
+# Setup depth image to laser scan.
+#-------------------------------------------------
+#RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-depth-image-to-laserscan  && \
+#    sudo rm -rf /var/lib/apt/lists/*
+#RUN cd "$BUILD_HOME/src" && git clone https://github.com/ros-perception/depthimage_to_laserscan.git -b ros2
+
+#-------------------------------------------------
+# Setup RTAB-Map (which also publishes odometry from laser_scan)
+#-------------------------------------------------
+#RUN cd "$BUILD_HOME/src" && git clone https://github.com/introlab/rtabmap_ros.git -b ${ROS_DISTRO}-devel
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-rtabmap-ros ros-${ROS_DISTRO}-grid-map-rviz-plugin && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+#-------------------------------------------------
+# Setup other Go Kart packages
+#-------------------------------------------------
+RUN git clone https://github.com/resilient-autonomous-systems-lab/AutoGoKart.git src/AutoGoKart
+
+#-------------------------------------------------
+# Setup MicroROS (https://github.com/micro-ROS/micro_ros_setup.git | https://micro.ros.org/docs/tutorials/core/first_application_linux/)
+#-------------------------------------------------
+RUN git clone -b ${ROS_DISTRO} https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup && \
+    python3 -m pip install pyserial
+
+#-------------------------------------------------
+# Setup Autoware. Todo: use main branch when done
+#-------------------------------------------------
+ARG AUTOWARE_DIR='src'
+ARG AUTOWARE_FOLDER_NAME='autoware_gokart'
+RUN git clone -b gokart_devel https://github.com/privvyledge/autoware.gokart.git ${AUTOWARE_DIR}/${AUTOWARE_FOLDER_NAME} && \
+    mkdir -p ${AUTOWARE_DIR}/${AUTOWARE_FOLDER_NAME}/src && \
+    vcs import src/${AUTOWARE_FOLDER_NAME}/src < ${AUTOWARE_DIR}/${AUTOWARE_FOLDER_NAME}/autoware.repos
+
+#-------------------------------------------------
+# Setup Mapping package (LIO-SAM).
+# Some packages to consider (https://autowarefoundation.github.io/autoware-documentation/main/how-to-guides/integrating-autoware/creating-maps/open-source-slam/)
+# https://github.com/TixiaoShan/LIO-SAM/tree/ros2 (lidar, imu, gps)
+# https://github.com/Ericsii/FAST_LIO (lidar, imu)
+# https://github.com/rsasaki0109/lidarslam_ros2 (lidar, imu)
+#-------------------------------------------------
+# LIO_SAM
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    software-properties-common \
+    ros-${ROS_DISTRO}-robot-state-publisher \
+    ros-${ROS_DISTRO}-perception-pcl \
+    ros-${ROS_DISTRO}-pcl-msgs \
+    ros-${ROS_DISTRO}-vision-opencv \
+    ros-${ROS_DISTRO}-xacro \
+    && sudo add-apt-repository -y ppa:borglab/gtsam-release-4.1 \
+    && sudo apt-get update \
+    && sudo apt install -y --no-install-recommends libgtsam-dev libgtsam-unstable-dev \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+RUN cd "$BUILD_HOME/src" && git clone --branch ros2 https://github.com/privvyledge/LIO-SAM.git
+
+# FAST_LIO
+RUN cd "$BUILD_HOME/src" && git clone https://github.com/Ericsii/FAST_LIO.git --recursive
+
+# (todo: move installation of all files to the top to avoid redundancies)
+# li_slam_ros2 (optionally supports 9-axis IMU)
+RUN cd "$BUILD_HOME/src" && git clone --recursive https://github.com/rsasaki0109/li_slam_ros2 && \
+    sudo add-apt-repository -y ppa:borglab/gtsam-release-4.1 && \
+    sudo apt-get update && \
+    sudo apt install -y --no-install-recommends libgtsam-dev libgtsam-unstable-dev && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+## (todo: remove. note that both li_slam_ros2 and lidarslam_ros2 cannot be in the same workspace)
+## lidarslam_ros2 (optionally supports 9-axis IMU but might not work properly. Use li_slam_ros2 instead)
+#RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-libg2o && \
+#    cd "$BUILD_HOME/src" && git clone --recursive https://github.com/rsasaki0109/lidarslam_ros2 && \
+#    sudo rm -rf /var/lib/apt/lists/*
+
+#-------------------------------------------------
+# Setup F1/10 Particle Filter. Removed libpython2.7
+#-------------------------------------------------
+# Install dependencies (removed language-pack-en-base python python-pexpect vulkan-utils libvulkan1). Todo: remove
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -qq -y --no-install-recommends \
+    bc bzip2 can-utils freeglut3-dev gstreamer1.0-alsa \
+    gstreamer1.0-libav gstreamer1.0-plugins-bad gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-ugly gstreamer1.0-tools gnupg2 \
+    i2c-tools iw kbd libcanberra-gtk3-module libgles2 libglu1-mesa-dev libglvnd-dev \
+    libgtk-3-0 libpython2.7 libudev1  libzmq5 mtd-utils parted pciutils \
+    python3-distutils sox udev wget vim git wireless-tools wpasupplicant && \
+    sudo rm -rf /var/lib/apt/lists/* && sudo apt-get clean
+
+RUN echo "/usr/lib/aarch64-linux-gnu/tegra" >> /etc/ld.so.conf.d/nvidia-tegra.conf && \
+    echo "/usr/lib/aarch64-linux-gnu/tegra-egl" >> /etc/ld.so.conf.d/nvidia-tegra.conf
+
+RUN sudo rm /usr/share/glvnd/egl_vendor.d/50_mesa.json && \
+    mkdir -p /usr/share/glvnd/egl_vendor.d/ && \
+    echo '{    "file_format_version" : "1.0.0",    "ICD" : {        "library_path" : "libEGL_nvidia.so.0"    }}' > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
+# Install gcc-8 and g++-8 for Ubuntu 22.04 and above
+RUN sudo apt-get update && mkdir -p /sdks/gcc && cd /sdks/gcc && \
+    wget http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/gcc-8_8.4.0-3ubuntu2_amd64.deb && \
+    wget http://mirrors.edge.kernel.org/ubuntu/pool/universe/g/gcc-8/gcc-8-base_8.4.0-3ubuntu2_amd64.deb && \
+    wget http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/libgcc-8-dev_8.4.0-3ubuntu2_amd64.deb && \
+    wget http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/cpp-8_8.4.0-3ubuntu2_amd64.deb && \
+    wget http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/libmpx2_8.4.0-3ubuntu2_amd64.deb && \
+    wget http://mirrors.kernel.org/ubuntu/pool/main/i/isl/libisl22_0.22.1-1_amd64.deb && \
+    sudo apt install ./libisl22_0.22.1-1_amd64.deb ./libmpx2_8.4.0-3ubuntu2_amd64.deb ./cpp-8_8.4.0-3ubuntu2_amd64.deb ./libgcc-8-dev_8.4.0-3ubuntu2_amd64.deb ./gcc-8-base_8.4.0-3ubuntu2_amd64.deb ./gcc-8_8.4.0-3ubuntu2_amd64.deb
+
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -qq -y --no-install-recommends \
+    gcc-8 g++-8 && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 8 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 8 && sudo rm -rf /var/lib/apt/lists/*
+
+# Compile rangelibc without CUDA. and install particle_filter package. Todo: ./compile_with_cuda.sh instead
+RUN python3 -m pip install Cython && cd /sdks && git clone https://github.com/f1tenth/range_libc.git && \
+    cd range_libc &&  git checkout foxy-devel && cd pywrapper && ./compile.sh && \
+    cd "$BUILD_HOME/src" && git clone https://github.com/f1tenth/particle_filter.git && \
+    cd particle_filter && git checkout ${ROS_DISTRO}-devel
+
+#-------------------------------------------------
+# Add symbolic links
+#-------------------------------------------------
+#This symbolic link is needed to use the streaming features on Jetson inside a container
+RUN ln -sf /usr/lib/aarch64-linux-gnu/tegra/libv4l2.so.0 /usr/lib/aarch64-linux-gnu/libv4l2.so
+
+#--------------------------------
+# Build ROS workspace
+# The -DROS_EDITION and -DHUMBLE_ROS flags are for LIVOX LIDAR
+# The '--event-handlers console_direct+ --base-paths',  ' -DCMAKE_LIBRARY_PATH' and ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' flags are needed by ZED
+# The ' -DCMAKE_BUILD_TYPE=Release' flag is for all of them, especially Autoware
+#--------------------------------
+RUN sudo apt update && \
+    source /opt/ros/${ROS_DISTRO}/setup.bash && \
+    rosdep update && \
+#    rosdep install --from-paths src/autoware/src --ignore-src -r -y && \
+    rosdep install --from-paths src --ignore-src -r -y --skip-keys "lio_sam fast_lio" && \
+    colcon build --symlink-install --event-handlers console_direct+ --base-paths src --cmake-args ' -DCMAKE_BUILD_TYPE=Release' ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' -DROS_EDITION=${ROS_VERSION} -DHUMBLE_ROS=${ROS_DISTRO}
+
+#-----------------------------
+# Setup microros agent, i.e create_agent_ws, then build_agent. Modified to skip rosdep keys and specify colcon build arguments
+#-----------------------------
+RUN bash -c 'source install/setup.bash; \
+             EXTERNAL_SKIP="lio_sam fast_lio"; \
+             ros2 run micro_ros_setup create_agent_ws.sh; \
+             ros2 run micro_ros_setup build_agent.sh'
+
+#-----------------------------
+# Setup environment variables
+#-----------------------------
+# Todo: use ENV to modify PATHs, e.g PATH, PYTHONPATH, LD_LIBRARY_PATH
+# Todo: add autoware environment variables like vehicle_id
+RUN echo 'alias build="colcon build --symlink-install  --event-handlers console_direct+"' >> ~/.bashrc && \
+    echo 'alias run="ros2 launch zed_wrapper zed2i.launch.py"' >> ~/.bashrc && \
+    echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc && \
+    echo 'source ${BUILD_HOME}/install/setup.bash' >> ~/.bashrc && \
+    echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc && \
+    echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/targets/aarch64-linux/lib/stubs:/opt/ros/${ROS_DISTRO}/install/lib' >> ~/.bashrc && \
+    echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib' >> ~/.bashrc && \
+    echo "source /usr/share/colcon_cd/function/colcon_cd.sh" >> ~/.bashrc && \
+    echo "export _colcon_cd_root=${ROS_ROOT}" >> ~/.bashrc && \
+    echo "source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash" >> ~/.bashrc
+
+## Todo: remove the lines below
+RUN sudo apt update && sudo apt install gedit cheese nautilus net-tools iputils-ping -y
+
