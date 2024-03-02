@@ -235,7 +235,7 @@ RUN git clone -b gokart_devel https://github.com/privvyledge/autoware.gokart.git
     vcs import src/${AUTOWARE_FOLDER_NAME}/src < ${AUTOWARE_DIR}/${AUTOWARE_FOLDER_NAME}/autoware.repos
 
 #-------------------------------------------------
-# Setup Mapping package (LIO-SAM).
+# Setup Mapping packages (LIO-SAM).
 # Some packages to consider (https://autowarefoundation.github.io/autoware-documentation/main/how-to-guides/integrating-autoware/creating-maps/open-source-slam/)
 # https://github.com/TixiaoShan/LIO-SAM/tree/ros2 (lidar, imu, gps)
 # https://github.com/Ericsii/FAST_LIO (lidar, imu)
