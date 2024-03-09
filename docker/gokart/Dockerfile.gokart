@@ -351,6 +351,7 @@ RUN echo 'alias build="colcon build --symlink-install  --event-handlers console_
     echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> ~/.bashrc && \
     echo 'source ${BUILD_HOME}/install/setup.bash' >> ~/.bashrc && \
     echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc && \
+    echo "export CYCLONEDDS_URI=file://$BUILD_HOME/src/autoware.gokart/cyclone_dds/cyclonedds_config.xml" >> ~/.bashrc && \
     echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/targets/aarch64-linux/lib/stubs:/opt/ros/${ROS_DISTRO}/install/lib' >> ~/.bashrc && \
     echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib' >> ~/.bashrc && \
     echo "source /usr/share/colcon_cd/function/colcon_cd.sh" >> ~/.bashrc && \
