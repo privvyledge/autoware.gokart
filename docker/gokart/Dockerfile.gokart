@@ -133,7 +133,7 @@ ENV BUILD_HOME=/kart_ws
 ARG BUILD_HOME=$BUILD_HOME
 RUN sudo mkdir -p "$BUILD_HOME/src" && sudo mkdir -p /sdks
 
-WORKDIR $BUILD_HOME/src
+WORKDIR $BUILD_HOME
 
 #------------------------
 # Setup TF2 and Geometry2
@@ -467,13 +467,14 @@ RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install
 #----------------------------------------------
 RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-apriltag && \
-    sudo rm -rf /var/lib/apt/lists/* \
+    sudo rm -rf /var/lib/apt/lists/*
 
 #-----------------------------------------------
 # Install/build Open3D (https://www.open3d.org/docs/release/arm.html). Doesn't work in dusty-nv container but works in Nvidia Isaac ROS container.
 # To build, see https://www.open3d.org/docs/release/arm.html#building-open3d-python-wheel-with-docker
 #-----------------------------------------------
-RUN python3 -m pip install open3d
+#RUN python3 -m pip install open3d
+RUN sudo apt update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends python3-open3d
 
 #-----------------------------------------------
 # Install Extra dependencies, e.g tensorrt-cmake, cudnn-cmake,
@@ -584,7 +585,7 @@ RUN sudo apt update && \
     rosdep install --from-paths src --ignore-src -r -y -q --os=ubuntu:jammy --rosdistro=humble --skip-keys "${SKIPPED_ROSDEP_KEYS}"
 
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
-    colcon build --symlink-install --event-handlers console_direct+ --base-paths src --cmake-args '  -Wno-dev' ' --no-warn-unused-cli' ' -DBUILD_ACCELERATE_GPU_WITH_GLSL=ON' ' -DCMAKE_BUILD_TYPE=Release' ' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"  -DDOWNLOAD_ARTIFACTS=ON'
+    colcon build --symlink-install --event-handlers console_direct+ --base-paths src --cmake-args '  -Wno-dev' ' --no-warn-unused-cli' ' -DBUILD_ACCELERATE_GPU_WITH_GLSL=ON' ' -DCMAKE_BUILD_TYPE=Release' ' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' ' -DDOWNLOAD_ARTIFACTS=ON' -DROS_EDITION=${ROS_VERSION} -DHUMBLE_ROS=${ROS_DISTRO}
 
 #-----------------------------
 # Setup microros agent, i.e create_agent_ws, then build_agent. Modified to skip rosdep keys and specify colcon build arguments
