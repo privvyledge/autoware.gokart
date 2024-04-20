@@ -238,7 +238,7 @@ RUN git clone https://github.com/resilient-autonomous-systems-lab/AutoGoKart.git
 #-------------------------------------------------
 # Setup MicroROS (https://github.com/micro-ROS/micro_ros_setup.git | https://micro.ros.org/docs/tutorials/core/first_application_linux/)
 #-------------------------------------------------
-RUN git clone -b ${ROS_DISTRO} https://github.com/micro-ROS/micro_ros_setup.git micro_ros_setup && \
+RUN cd "${BUILD_HOME}/src" && git clone -b ${ROS_DISTRO} https://github.com/micro-ROS/micro_ros_setup.git micro_ros_setup && \
     python3 -m pip install pyserial
 
 #-------------------------------------------------
@@ -246,7 +246,7 @@ RUN git clone -b ${ROS_DISTRO} https://github.com/micro-ROS/micro_ros_setup.git 
 #-------------------------------------------------
 ARG AUTOWARE_DIR='src'
 ARG AUTOWARE_FOLDER_NAME='autoware_gokart'
-RUN git clone -b gokart_devel https://github.com/privvyledge/autoware.gokart.git  && cd autoware.gokart && mkdir src && \
+RUN cd "${BUILD_HOME}/src" && git clone -b gokart_devel https://github.com/privvyledge/autoware.gokart.git  && cd autoware.gokart && mkdir src && \
     vcs import src < autoware.repos  && \
     chmod +x install_autoware_dependencies.sh && ./install_autoware_dependencies.sh
 
