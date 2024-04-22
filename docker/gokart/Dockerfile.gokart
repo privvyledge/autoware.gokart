@@ -233,7 +233,7 @@ RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install
 #-------------------------------------------------
 # Setup other Go Kart packages
 #-------------------------------------------------
-RUN git clone https://github.com/resilient-autonomous-systems-lab/AutoGoKart.git src/AutoGoKart
+RUN git clone https://github.com/privvyledge/AutoGoKart.git src/AutoGoKart
 
 #-------------------------------------------------
 # Setup MicroROS (https://github.com/micro-ROS/micro_ros_setup.git | https://micro.ros.org/docs/tutorials/core/first_application_linux/)
